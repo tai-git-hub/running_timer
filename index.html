@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>持久走カウントダウンタイマー</title>
+    <style>
+        :root {
+            --primary: #4CAF50;
+            --secondary: #2196F3;
+            --danger: #f44336;
+            --bg: #f9f9f9;
+            --radius: 20px;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 500px;
+            background: white;
+            padding: 25px;
+            border-radius: var(--radius);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            text-align: center;
+        }
+
+        h1 { font-size: 1.5rem; margin-bottom: 20px; }
+
+        .setup-group { margin-bottom: 20px; }
+        input[type="number"] {
+            padding: 10px;
+            width: 80px;
+            border-radius: 10px;
+            border: 2px solid #ddd;
+            font-size: 1.2rem;
+            text-align: center;
+        }
+
+        .display { margin: 20px 0; }
+        .total-time { font-size: 3rem; font-weight: bold; color: #333; }
+        .countdown-label { font-size: 1rem; color: #666; margin-top: 10px; }
+        .countdown-time { font-size: 5rem; font-weight: bold; color: var(--secondary); }
+
+        .btn {
+            border: none;
+            border-radius: var(--radius);
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.1s;
+            margin: 5px;
+        }
+
+        .btn:active { transform: scale(0.95); }
+
+        .btn-start { background: var(--primary); padding: 15px 40px; font-size: 1.2rem; width: 100%; }
+        .btn-lap { background: var(--secondary); padding: 40px; font-size: 2rem; width: 100%; margin-top: 20px; }
+        .btn-stop { background: var(--danger); padding: 10px 20px; font-size: 1rem; margin-top: 20px; }
+        .btn-reset { background: #999; padding: 10px 20px; font-size: 1rem; }
+        .btn-delete { background: var(--danger); padding: 5px 10px; border-radius: 8px; font-size: 0.8rem; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border-bottom: 1px solid #eee; padding: 12px; text-align: center; }
+        .diff-plus { color: var(--danger); }
+        .diff-minus { color: var(--secondary); }
+
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🏃 持久走タイマー</h1>
+
+    <div id="setup-screen">
+        <div class="setup-group">
+            <label>1ラップの目標タイム (秒): </label><br><br>
+            <input type="number" id="target-input" value="100" min="1">
+        </div>
+        <button class="btn btn-start" onclick="startTimer()">スタート</button>
+    </div>
+
+    <div id="timer-screen" class="hidden">
+        <div class="display">
+            <div>合計経過時間</div>
+            <div class="total-time" id="total-display">00:00</div>
+            <div class="countdown-label">次のラップまであと</div>
+            <div class="countdown-time" id="countdown-display">00</div>
+        </div>
+        <button class="btn btn-lap" id="lap-btn" onclick="recordLap()">LAP</button>
+        <button class="btn btn-stop" onclick="stopTimer()">終了して結果を見る</button>
+    </div>
+
+    <div id="result-screen" class="hidden">
+        <h2>計測結果</h2>
+        <table id="result-table">
+            <thead>
+                <tr>
+                    <th>Lap</th>
+                    <th>タイム</th>
+                    <th>累計</th>
+                    <th>目標誤差</th>
+                    <!--
+                    <th>編集</th>
+                    -->
+                </tr>
+            </thead>
+            <tbody id="result-body"></tbody>
+        </table>
+        <br>
+        <!--
+        <button class="btn btn-reset" onclick="resetTimer()">リセットして最初から</button>
+        -->
+    </div>
+</div>
+
+<script>
+    let targetTime = 0;
+    let totalSeconds = 0;
+    let lapStartSeconds = 0;
+    let laps = [];
+    let timerInterval = null;
+
+    const setupScreen = document.getElementById('setup-screen');
+    const timerScreen = document.getElementById('timer-screen');
+    const resultScreen = document.getElementById('result-screen');
+
+    // 時間フォーマット (SS -> MM:SS)
+    function formatTime(s) {
+        const m = Math.floor(s / 60);
+        const rs = s % 60;
+        return `${String(m).padStart(2, '0')}:${String(rs).padStart(2, '0')}`;
+    }
+
+    function startTimer() {
+        targetTime = parseInt(document.getElementById('target-input').value);
+        if (isNaN(targetTime) || targetTime <= 0) return alert("目標タイムを入力してください");
+
+        setupScreen.classList.add('hidden');
+        timerScreen.classList.remove('hidden');
+        
+        timerInterval = setInterval(() => {
+            totalSeconds++;
+            updateDisplay();
+        }, 1000);
+    }
+
+    function updateDisplay() {
+        document.getElementById('total-display').innerText = formatTime(totalSeconds);
+        const currentLapElapsed = totalSeconds - lapStartSeconds;
+        const remaining = targetTime - currentLapElapsed;
+        document.getElementById('countdown-display').innerText = remaining;
+        
+        // カウントダウンがマイナスになってもそのまま表示（遅れていることがわかる）
+    }
+
+    function recordLap() {
+        const targetCumulative = lapStartSeconds + targetTime;
+        const lapTime = totalSeconds - lapStartSeconds;
+        const cumulativeTime = totalSeconds;
+        const deviation = cumulativeTime - targetCumulative;
+
+        laps.push({ lapTime, cumulativeTime, deviation });
+        lapStartSeconds = totalSeconds;
+        updateDisplay();
+    }
+
+    function stopTimer() {
+        clearInterval(timerInterval);
+        timerScreen.classList.add('hidden');
+        resultScreen.classList.remove('hidden');
+        renderResults();
+    }
+
+    function renderResults() {
+        const tbody = document.getElementById('result-body');
+        tbody.innerHTML = '';
+        laps.forEach((lap, index) => {
+            const row = document.createElement('tr');
+            const diffClass = lap.deviation > 0 ? 'diff-plus' : (lap.deviation < 0 ? 'diff-minus' : '');
+            const diffText = lap.deviation > 0 ? `+${lap.deviation}` : lap.deviation;
+
+            row.innerHTML = `
+                <td>${index + 1}</td>
+                <td>${formatTime(lap.lapTime)}</td>
+                <td>${formatTime(lap.cumulativeTime)}</td>
+                <td class="${diffClass}">${diffText}秒</td>
+            `;
+            // <td><button class="btn-delete" onclick="deleteLap(${index})">削除</button></td>
+            
+            tbody.appendChild(row);
+        });
+    }
+
+    function deleteLap(index) {
+        if (confirm("このラップ記録を削除しますか？\n(※削除するとそれ以降の目標誤差も再計算されます)")) {
+            laps.splice(index, 1);
+            
+            // 削除後の再計算（目標誤差を正しい順番で振り直す）
+            laps.forEach((lap, i) => {
+                lap.deviation = lap.cumulativeTime - ((i + 1) * targetTime);
+            });
+            
+            renderResults();
+        }
+    }
+
+    function resetTimer() {
+        if (confirm("すべての記録を消去してリセットしますか？")) {
+            totalSeconds = 0;
+            lapStartSeconds = 0;
+            laps = [];
+            setupScreen.classList.remove('hidden');
+            resultScreen.classList.add('hidden');
+            document.getElementById('total-display').innerText = "00:00";
+            document.getElementById('countdown-display').innerText = "00";
+        }
+    }
+
+    // キーボード操作
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' || e.code === 'Enter') {
+            if (!timerScreen.classList.contains('hidden')) {
+                e.preventDefault(); // スクロール防止
+                recordLap();
+            } else if (!setupScreen.classList.contains('hidden')) {
+                startTimer();
+            }
+        }
+    });
+</script>
+
+</body>
+</html>
